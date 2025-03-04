@@ -2,57 +2,59 @@ package com.example.composetutorial
 
 import android.os.Bundle
 import android.os.Parcelable
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import coil.compose.AsyncImage
+import androidx.compose.ui.tooling.preview.Preview
+import com.example.composetutorial.model.ProfileState
+import com.example.composetutorial.model.ProfileViewModel
+import com.example.composetutorial.ui.theme.AppTheme
+import com.google.gson.Gson
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.parcelize.Parcelize
+import retrofit2.http.GET
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
+            AppTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -63,26 +65,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
 @Parcelize
-data class Profile(val name: String, val age: Int, val imageUrl: String) : Parcelable
+data class Profile(val id: Int, val name: String, val age: Int, val imageUrl: String) : Parcelable
 
-// ViewModel để quản lý danh sách Profile
-class ProfileViewModel : ViewModel() {
-    private val _profiles = MutableStateFlow<List<Profile>>(emptyList())
-    val profiles: StateFlow<List<Profile>> = _profiles
-
-    init {
-        // Dữ liệu mẫu (sau này có thể thay bằng API)
-        _profiles.value = listOf(
-            Profile("Alice", 25, "https://via.placeholder.com/50"),
-            Profile("Bob", 30, "https://via.placeholder.com/50"),
-            Profile("Charlie", 22, "https://via.placeholder.com/50")
-        )
-    }
-}
 
 @Composable
-fun AppNavigation() {
+fun AppNavigation(viewModel: ProfileViewModel = viewModel()) {
     val navController = rememberNavController()
     NavHost(
         navController = navController,
@@ -91,86 +80,168 @@ fun AppNavigation() {
         exitTransition = { fadeOut(animationSpec = tween(500)) }
     ) {
         composable("profile_list") {
-            ProfileList(navController = navController)
+            ProfileList(navController = navController, viewModel = viewModel)
         }
-        composable("profile_detail") {
-            val profile = navController.previousBackStackEntry?.savedStateHandle?.get<Profile>("profile")
-            profile?.let {
-                ProfileDetail(it,navController)
+        composable(
+            route = "profile_detail/{id}",
+            arguments = listOf(navArgument("id") { type = NavType.IntType })
+        ) { backStackEntry ->
+            val id = backStackEntry.arguments?.getInt("id") ?: 0
+            val profile = viewModel.getProfileById(id) // Lấy Profile từ ViewModel
+
+            if (profile != null) {
+                ProfileDetail(
+                    profile = profile,
+                    navController = navController,
+                    viewModel = viewModel
+                )
             }
         }
     }
 }
 
+@OptIn(ExperimentalAnimationApi::class)
 @Composable
-fun ProfileList(
-    navController: androidx.navigation.NavController,
-    viewModel: ProfileViewModel = viewModel()
-) {
-    val profiles = viewModel.profiles.collectAsState().value
+fun ProfileList(navController: androidx.navigation.NavController, viewModel: ProfileViewModel) {
+    val state = viewModel.profileState.collectAsState().value
+    val searchQuery = viewModel.searchQuery.collectAsState().value
+    val updatedProfile = navController.currentBackStackEntry?.savedStateHandle?.get<Profile>("updatedProfile")
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        item {
-            Text(
-                text = "User Profiles",
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
+    LaunchedEffect(updatedProfile) {
+        updatedProfile?.let {
+            viewModel.updateProfile(it) // Cập nhật danh sách
+            navController.currentBackStackEntry?.savedStateHandle?.remove<Profile>("updatedProfile") // Xóa để tránh cập nhật lại lần sau
         }
-        items(profiles) { profile ->
-            ProfileCard(profile = profile, onClick = {
-                navController.currentBackStackEntry?.savedStateHandle?.set("profile", profile)
-                navController.navigate("profile_detail")
-            })
+    }
+
+    Log.d("ProfileList", "State: ${Gson().toJson(state)}")
+
+    AnimatedContent(
+        targetState = state,
+        transitionSpec = {
+            fadeIn(animationSpec = tween(500)) + slideInVertically(animationSpec = tween(500)) with
+                    fadeOut(animationSpec = tween(500)) + slideOutVertically(animationSpec = tween(500))
+        }
+    ) { targetState ->
+        when (targetState) {
+            is ProfileState.Loading -> {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
+            is ProfileState.Success -> {
+                Column(
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "User Profiles",
+                            style = MaterialTheme.typography.headlineMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Button(onClick = { viewModel.refreshProfiles() }) {
+                            Text("Refresh")
+                        }
+                    }
+                    TextField(
+                        value = searchQuery,
+                        onValueChange = { viewModel.updateSearchQuery(it) },
+                        label = { Text("Search by name") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp)
+                    ) {
+                        itemsIndexed(targetState.profiles) { _, profile ->
+                            ProfileCard(profile = profile, onClick = {
+                                navController.navigate("profile_detail/${profile.id}")
+                            })
+                        }
+                    }
+                }
+            }
+            is ProfileState.Error -> {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = targetState.message,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(onClick = { viewModel.refreshProfiles() }) {
+                        Text("Try Again")
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
 fun ProfileCard(profile: Profile, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp)
-            .clickable(onClick = onClick)
-            .animateContentSize(),
-        elevation = CardDefaults.cardElevation(4.dp)
+    AnimatedVisibility(
+        visible = true,
+        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
     ) {
-        Row(
-            modifier = Modifier.padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp)
+                .clickable(onClick = onClick)
+                .animateContentSize(),
+            elevation = CardDefaults.cardElevation(4.dp)
         ) {
-            AsyncImage(
-                model = profile.imageUrl,
-                contentDescription = "${profile.name}'s picture",
-                modifier = Modifier
-                    .size(50.dp)
-                    .background(MaterialTheme.colorScheme.primary)
-            )
-            Spacer(modifier = Modifier.width(16.dp))
-            Column {
-                Text(
-                    text = "Name: ${profile.name}",
-                    style = MaterialTheme.typography.bodyLarge
+            Row(
+                modifier = Modifier.padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AsyncImage(
+                    model = profile.imageUrl,
+                    contentDescription = "${profile.name}'s picture",
+                    modifier = Modifier
+                        .size(50.dp)
+                        .background(MaterialTheme.colorScheme.primary)
                 )
-                Text(
-                    text = "Age: ${profile.age}",
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column {
+                    Text(
+                        text = "Name: ${profile.name}",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Text(
+                        text = "Age: ${profile.age}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-fun ProfileDetail(profile: Profile, navController: androidx.navigation.NavController) {
+fun ProfileDetail(profile: Profile, navController: androidx.navigation.NavController, viewModel: ProfileViewModel) {
+    var showDialog by remember { mutableStateOf(false) }
+    var editedName by remember { mutableStateOf(profile.name) }
+    var editedAge by remember { mutableStateOf(profile.age.toString()) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -179,13 +250,17 @@ fun ProfileDetail(profile: Profile, navController: androidx.navigation.NavContro
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Start
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = { navController.popBackStack() }) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    imageVector = Icons.Default.ArrowBack,
                     contentDescription = "Back"
                 )
+            }
+            Button(onClick = { showDialog = true }) {
+                Text("Edit")
             }
         }
         Spacer(modifier = Modifier.height(16.dp))
@@ -211,12 +286,56 @@ fun ProfileDetail(profile: Profile, navController: androidx.navigation.NavContro
             style = MaterialTheme.typography.bodyMedium
         )
     }
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text("Edit Profile") },
+            text = {
+                Column {
+                    TextField(
+                        value = editedName,
+                        onValueChange = { editedName = it },
+                        label = { Text("Name") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextField(
+                        value = editedAge,
+                        onValueChange = { editedAge = it.filter { char -> char.isDigit() } },
+                        label = { Text("Age") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val ageInt = editedAge.toIntOrNull() ?: profile.age
+                        viewModel.updateProfile(Profile(profile.id, editedName, ageInt, profile.imageUrl))
+                        showDialog = false
+                    }
+                ) {
+                    Text("Save")
+                    val updatedProfile = profile.copy(name = editedName, age = editedAge.toInt())
+                    navController.previousBackStackEntry?.savedStateHandle?.set("updatedProfile", updatedProfile)
+                }
+            },
+            dismissButton = {
+                Button(onClick = { showDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
+
+
 
 @Preview(showBackground = true)
 @Composable
 fun ProfileListPreview() {
-    MaterialTheme {
-        ProfileList(navController = rememberNavController())
+    AppTheme {
+        ProfileList(navController = rememberNavController(), viewModel = viewModel())
     }
 }

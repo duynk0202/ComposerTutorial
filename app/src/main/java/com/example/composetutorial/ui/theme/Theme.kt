@@ -9,6 +9,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
@@ -53,6 +54,26 @@ fun ComposeTutorialTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
+        content = content
+    )
+}
+
+private val AppColorScheme = lightColorScheme(
+    primary = Color(0xFF6200EE), // Màu tím
+    secondary = Color(0xFF03DAC6), // Màu xanh ngọc
+    background = Color(0xFFF5F5F5), // Nền xám nhạt
+    surface = Color.White,
+    onPrimary = Color.White,
+    onSecondary = Color.Black,
+    onBackground = Color.Black,
+    onSurface = Color.Black
+)
+
+@Composable
+fun AppTheme(content: @Composable () -> Unit) {
+    MaterialTheme(
+        colorScheme = AppColorScheme,
+        typography = MaterialTheme.typography,
         content = content
     )
 }

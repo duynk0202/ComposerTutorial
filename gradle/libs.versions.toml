@@ -15,6 +15,9 @@ parcelize = "2.1.20-RC"
 composeCompiler = "2.1.20-RC"
 gsonVersion = "2.11.0"
 viewModel = "2.8.7"
+retrofit = "2.9.0"
+coroutintes = "1.8.0"
+logging = "4.11.0"
 
 
 [libraries]
@@ -36,6 +39,10 @@ coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coi
 navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigation" }
 kotlin-gson-compose = { group = "com.google.code.gson", name = "gson", version.ref = "gsonVersion" }
 kotlin-viewmodel= { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "viewModel" }
+retrofit= { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
+convert-gson= { group = "com.squareup.retrofit2", name = "converter-gson", version.ref = "retrofit" }
+kotlin-coutines= { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutintes" }
+logging= { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "logging" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
